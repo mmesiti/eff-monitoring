@@ -5,11 +5,19 @@ import pandas as pd
 from io import StringIO
 from sys import argv
 from tabulate import tabulate
+from allfields import allfields
 
 user = argv[1]
 start  = datetime.date.today() - datetime.timedelta(days = int(argv[2]))
+end  = datetime.date.today() 
+
+try:
+    end = end - datetime.timedelta(days = int(argv[3]))
+except:
+    pass
  
-date_str = start.strftime("%Y-%m-%d")
+start_str = start.strftime("%Y-%m-%d")
+end_str = end.strftime("%Y-%m-%d")
 
 fields = ['JobID',
 'CPUTimeRAW',
@@ -22,7 +30,10 @@ fields = ['JobID',
 
 formatstr = ','.join( f+"%20" for f in fields)
 
-cmd = f"sacct -u {user} --start {date_str} -o {formatstr} --parsable"
+#cmd = f"sacct -u {user} --start {start_str} --end {end_str} -o {formatstr} --parsable2 --long"
+cmd = f"sacct -u {user} --start {start_str} --end {end_str} -o {formatstr} --parsable2"
+format_string = ' --format ' + ','.join(allfields)
+cmd = cmd + format_string
 output  = subprocess.run(cmd.split(), capture_output = True)
 str_output = output.stdout.decode("utf-8")
 ss = StringIO(str_output)
@@ -70,11 +81,14 @@ df['Efficiency'] = df.TotalCPU/df.CPUTimeRAW
 
 df["Effective CPUS"] = (df.Efficiency * df.NCPUS)
 
-print(df.loc[(slice(None),''),['Efficiency','NCPUS','Effective CPUS','ReqMem','ExitCode','TimeLimit']])
+cols_to_print = ['Efficiency','NCPUS','Effective CPUS','ReqMem','ExitCode','Timelimit']
+print([ c for c in cols_to_print if c not in df.columns ])
+
+print(df.loc[(slice(None),''),cols_to_print])
 
 print("Efficiency:", df.TotalCPU.loc[(slice(None),'')].sum()/df.CPUTimeRAW.loc[(slice(None),'')].sum())
 
-out_df = df.loc[:,['Efficiency','NCPUS','Effective CPUS','ReqMem','ExitCode']]
+out_df = df.loc[(slice(None),''),['Efficiency','NCPUS','Effective CPUS','ReqMem','ExitCode','JobName','Submit']]
 
 
 with open(f"eff_{user}.csv",'w') as f:
