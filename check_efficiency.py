@@ -5,7 +5,7 @@ import pandas as pd
 from io import StringIO
 from sys import argv
 from tabulate import tabulate
-from allfields import allfields
+from allfields import get_all_fields
 
 user = argv[1]
 start  = datetime.date.today() - datetime.timedelta(days = int(argv[2]))
@@ -32,10 +32,11 @@ formatstr = ','.join( f+"%20" for f in fields)
 
 #cmd = f"sacct -u {user} --start {start_str} --end {end_str} -o {formatstr} --parsable2 --long"
 cmd = f"sacct -u {user} --start {start_str} --end {end_str} -o {formatstr} --parsable2"
-format_string = ' --format ' + ','.join(allfields)
+format_string = ' --format ' + ','.join(get_all_fields())
 cmd = cmd + format_string
 output  = subprocess.run(cmd.split(), capture_output = True)
 str_output = output.stdout.decode("utf-8")
+
 ss = StringIO(str_output)
 
 df = pd.read_csv(ss,delimiter="|")
@@ -47,7 +48,7 @@ index = df.JobID.str.extract("(?P<JobID>\d+)\.?(?P<Substep>.*)", expand = True)
 
 df = df[[col for col in df.columns if col != "JobID"]].join(index).set_index(["JobID","Substep"])
 
-print(df)
+#print(df)
 
 # Got the dataframe
 
@@ -81,24 +82,26 @@ df['Efficiency'] = df.TotalCPU/df.CPUTimeRAW
 
 df["Effective CPUS"] = (df.Efficiency * df.NCPUS)
 
-cols_to_print = ['Efficiency','NCPUS','Effective CPUS','ReqMem','ExitCode','Timelimit']
-print([ c for c in cols_to_print if c not in df.columns ])
-
-print(df.loc[(slice(None),''),cols_to_print])
+#cols_to_print = ['Efficiency','NCPUS','Effective CPUS','ReqMem','ExitCode','Timelimit']
+#
+#print([ c for c in cols_to_print if c not in df.columns ])
+#print(df.loc[(slice(None),''),cols_to_print])
 
 print("Efficiency:", df.TotalCPU.loc[(slice(None),'')].sum()/df.CPUTimeRAW.loc[(slice(None),'')].sum())
 
-out_df = df.loc[(slice(None),''),['Efficiency','NCPUS','Effective CPUS','ReqMem','ExitCode','JobName','Submit']]
+out_df = df.loc[(slice(None),''),['Efficiency','NCPUS','Effective CPUS','ReqMem','ExitCode','JobName','Submit','Start','Elapsed']]
 
+out_df_loweff = out_df.loc[out_df.Efficiency < .6,:]
 
-with open(f"eff_{user}.csv",'w') as f:
-    f.write(
-            tabulate(out_df
-                    .reset_index()
-                    .sort_values(by=["JobID","Substep"]),
-                    headers='keys',
-                    tablefmt='psql',
-                    showindex=False)
-            )
-
-
+for df,filename in [(out_df,f"eff_{user}.csv"),(out_df_loweff,f"loweff_{user}.csv")]:
+    with open(filename,'w') as f:
+        f.write(
+                tabulate(df
+                        .reset_index()
+                        .sort_values(by=["JobID","Substep"]),
+                        headers='keys',
+                        tablefmt='psql',
+                        showindex=False)
+                )
+    
+    
