@@ -7,9 +7,15 @@ from sys import argv
 from tabulate import tabulate
 from allfields import get_all_fields
 
-user = argv[1]
-start  = datetime.date.today() - datetime.timedelta(days = int(argv[2]))
-end  = datetime.date.today() 
+try:
+    user = argv[1]
+    start  = datetime.date.today() - datetime.timedelta(days = int(argv[2]))
+    end  = datetime.date.today() 
+except:
+    print(f"Usage {argv[0]} user how-many-days-ago-start")
+    print(f"e.g.: {argv[0]} s.michele.mesiti 7 # for a week ago")
+    print(f"or: ")
+    print(f"Usage {argv[0]} user how-many-days-ago-start how-many-days-ago-end")
 
 try:
     end = end - datetime.timedelta(days = int(argv[3]))
@@ -36,6 +42,12 @@ format_string = ' --format ' + ','.join(get_all_fields())
 cmd = cmd + format_string
 output  = subprocess.run(cmd.split(), capture_output = True)
 str_output = output.stdout.decode("utf-8")
+str_err = output.stderr.decode("utf-8")
+
+print("Command:")
+print(cmd)
+print("Error stream:")
+print(str_err)
 
 ss = StringIO(str_output)
 
