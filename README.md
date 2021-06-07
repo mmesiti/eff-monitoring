@@ -9,3 +9,7 @@ Usage examples:
 ./check_efficiency.py s.michele.mesiti 14 7
 ```
 
+Dependencies:
+- Python 3.8
+- pandas
+- tabulate
