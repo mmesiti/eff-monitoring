@@ -3,117 +3,164 @@ import subprocess
 import datetime
 import pandas as pd
 from io import StringIO
-from sys import argv
+from sys import argv, exit
 from tabulate import tabulate
 from allfields import get_all_fields
 
-try:
-    user = argv[1]
-    start  = datetime.date.today() - datetime.timedelta(days = int(argv[2]))
-    end  = datetime.date.today() 
-except:
-    print(f"Usage {argv[0]} user how-many-days-ago-start")
-    print(f"e.g.: {argv[0]} s.michele.mesiti 7 # for a week ago")
-    print(f"or: ")
-    print(f"Usage {argv[0]} user how-many-days-ago-start how-many-days-ago-end")
 
-try:
-    end = end - datetime.timedelta(days = int(argv[3]))
-except:
-    pass
- 
-start_str = start.strftime("%Y-%m-%d")
-end_str = end.strftime("%Y-%m-%d")
-
-fields = ['JobID',
-'CPUTimeRAW',
-'TotalCPU',
-'JobName',
-'NCPUS',
-'ReqMem',
-'ExitCode',
-'TimeLimit']
-
-formatstr = ','.join( f+"%20" for f in fields)
-
-#cmd = f"sacct -u {user} --start {start_str} --end {end_str} -o {formatstr} --parsable2 --long"
-cmd = f"sacct -u {user} --start {start_str} --end {end_str} -o {formatstr} --parsable2"
-format_string = ' --format ' + ','.join(get_all_fields())
-cmd = cmd + format_string
-output  = subprocess.run(cmd.split(), capture_output = True)
-str_output = output.stdout.decode("utf-8")
-str_err = output.stderr.decode("utf-8")
-
-print("Command:")
-print(cmd)
-print("Error stream:")
-print(str_err)
-
-ss = StringIO(str_output)
-
-df = pd.read_csv(ss,delimiter="|")
-#drop the last column
-df = df.iloc[:,:-1]
+def get_args():
+    '''
+    Parse command line arguments.
+    '''
+    try:
+        user = argv[1]
+        start = datetime.date.today() - datetime.timedelta(days=int(argv[2]))
+        end = datetime.date.today()
+    except:
+        print(f"Usage {argv[0]} user how-many-days-ago-start")
+        print(f"e.g.: {argv[0]} s.michele.mesiti 7 # for a week ago")
+        print(f"or: ")
+        print(
+            f"Usage {argv[0]} user how-many-days-ago-start how-many-days-ago-end"
+        )
+        exit()
+    try:
+        end = end - datetime.timedelta(days=int(argv[3]))
+    except:
+        pass
+    return user, start, end
 
 
-index = df.JobID.str.extract("(?P<JobID>\d+)\.?(?P<Substep>.*)", expand = True)
+def get_df_from_sacct(user, start, end):
+    '''
+    Query `sacct` and get a dataframe with all the job data.
+    '''
+    start_str = start.strftime("%Y-%m-%d")
+    end_str = end.strftime("%Y-%m-%d")
 
-df = df[[col for col in df.columns if col != "JobID"]].join(index).set_index(["JobID","Substep"])
+    cmd = f"sacct -u {user} --start {start_str} --end {end_str} --parsable2"
+    format_string = ' --format ' + ','.join(get_all_fields())
+    cmd = cmd + format_string
+    output = subprocess.run(cmd.split(), capture_output=True)
+    str_output = output.stdout.decode("utf-8")
+    str_err = output.stderr.decode("utf-8")
 
-#print(df)
+    print("Command:")
+    print(cmd)
+    print("Error stream:")
+    print(str_err)
 
-# Got the dataframe
+    ss = StringIO(str_output)
 
-# convert TimeRAW to timedelta
+    return pd.read_csv(ss, delimiter="|")
 
-df.CPUTimeRAW = pd.to_timedelta(df.CPUTimeRAW,unit = 'sec')
 
-# convert TotalCPU to timedelta
-# complicated because the timedelta format of slurm and of pandas do not
-# agree
-units = ['days','hours','minutes','seconds']
+def reindex_df(df):
+    '''
+    Reindex dataframes using the JobID and the job step
+    (from the JobID column).
+    '''
+    index = df.JobID.str.extract("(?P<JobID>\d+)\.?(?P<JobStep>.*)",
+                                 expand=True)
 
-days_pattern = r"(?P<days>\d*)-"
-hours_pattern = r"(?P<hours>\d+):"
-days_hour_pattern = f"({days_pattern})?{hours_pattern}"
+    return (df[[col for col in df.columns if col != "JobID"]]  #
+            .join(index)  #
+            .set_index(["JobID", "JobStep"]))
 
-minutes_pattern = r"(?P<minutes>\d+)"
-seconds_pattern = r"(?P<seconds>.*)"
 
-totcpu = df.TotalCPU.str.extract(
+def convert_totcpu(totcpu_series):
+    '''
+    Convert TotalCPU to timedelta.
+    complicated because the timedelta format 
+    of slurm and of pandas 
+    do not  agree.
+    '''
+
+    units = ['days', 'hours', 'minutes', 'seconds']
+
+    days_pattern = r"(?P<days>\d*)-"
+    hours_pattern = r"(?P<hours>\d+):"
+    days_hour_pattern = f"({days_pattern})?{hours_pattern}"
+
+    minutes_pattern = r"(?P<minutes>\d+)"
+    seconds_pattern = r"(?P<seconds>.*)"
+
+    totcpu = totcpu_series.str.extract(
         f"({days_hour_pattern})?{minutes_pattern}:{seconds_pattern}",
-        expand = True)[units]
+        expand=True)[units]
 
-totcpu[totcpu.isna()] = 0
+    totcpu = totcpu.fillna(0)
 
-df.TotalCPU = sum((pd.to_timedelta(totcpu[unit].astype(float), unit = unit) for unit in units),pd.Timedelta(0))
+    return sum((pd.to_timedelta(totcpu[unit].astype(float), unit=unit)
+                for unit in units), pd.Timedelta(0))
 
-# Compute efficiency
 
-df['Efficiency'] = df.TotalCPU/df.CPUTimeRAW
+def convert_cputime_raw(cputime_raw):
+    return pd.to_timedelta(cputime_raw, unit='sec')
 
-df["Effective CPUS"] = (df.Efficiency * df.NCPUS)
 
-#cols_to_print = ['Efficiency','NCPUS','Effective CPUS','ReqMem','ExitCode','Timelimit']
-#
-#print([ c for c in cols_to_print if c not in df.columns ])
-#print(df.loc[(slice(None),''),cols_to_print])
+def add_efficiency_columns(df):
+    '''
+    Compute efficiency of single jobs
+    and add it to the dataframe 
+    as a new column.
+    '''
+    df['Efficiency'] = df.TotalCPU / df.CPUTimeRAW
+    df["Effective CPUS"] = (df.Efficiency * df.NCPUS)
+    return df
 
-print("Efficiency:", df.TotalCPU.loc[(slice(None),'')].sum()/df.CPUTimeRAW.loc[(slice(None),'')].sum())
 
-out_df = df.loc[(slice(None),''),['Efficiency','NCPUS','Effective CPUS','ReqMem','ExitCode','JobName','Submit','Start','Elapsed']]
+def compute_global_efficiency(df):
+    '''
+    Compute the total average efficiency of all included jobs.
+    '''
+    cpu_time_actively_used = df.TotalCPU.loc[(slice(None), '')].sum()
+    cpu_time_consumed = df.CPUTimeRAW.loc[(slice(None), '')].sum()
 
-out_df_loweff = out_df.loc[out_df.Efficiency < .6,:]
+    efficiency = cpu_time_actively_used / cpu_time_consumed
+    return efficiency
 
-for df,filename in [(out_df,f"eff_{user}.csv"),(out_df_loweff,f"loweff_{user}.csv")]:
-    with open(filename,'w') as f:
-        f.write(
-                tabulate(df
-                        .reset_index()
-                        .sort_values(by=["JobID","Substep"]),
-                        headers='keys',
-                        tablefmt='psql',
-                        showindex=False)
-                )
-    
-    
+
+def save_csvs(df):
+    '''
+    Save dataframes to disk as PSQL-decorated CSV.
+    Low efficiency jobs are saved in a different file.
+    '''
+    out_df = df.loc[(slice(None), ''),  #
+                    [
+                        'Efficiency',  #           
+                        'NCPUS',  #      
+                        'Effective CPUS',  #               
+                        'ReqMem',  #       
+                        'ExitCode',  #         
+                        'JobName',  #        
+                        'Submit',  #       
+                        'Start',  #      
+                        'Elapsed'
+                    ]]
+
+    loweff_threshold = .6
+    out_df_loweff = out_df.loc[out_df.Efficiency < loweff_threshold, :]
+
+    for df, filename in [(out_df, f"eff_{user}.csv"),
+                         (out_df_loweff, f"loweff_{user}.csv")]:
+        with open(filename, 'w') as f:
+            f.write(
+                tabulate(df.reset_index().sort_values(by=["JobID", "JobStep"]),
+                         headers='keys',
+                         tablefmt='psql',
+                         showindex=False))
+
+
+if __name__ == "__main__":
+    user, start, end = get_args()
+    df = get_df_from_sacct(user, start, end)
+    df = reindex_df(df)
+    # convert TimeRAW to timedelta
+    df.TotalCPU = convert_totcpu(df.TotalCPU)
+    df.CPUTimeRAW = convert_cputime_raw(df.CPUTimeRAW)
+
+    # Compute efficiency
+    df = add_efficiency_columns(df)
+    print("Efficiency:", compute_global_efficiency(df))
+    save_csvs(df)
