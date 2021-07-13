@@ -114,6 +114,7 @@ def compute_global_efficiency(df):
     '''
     Compute the total average efficiency of all included jobs.
     '''
+    # selecting only the main job step with (slice(None), '')
     cpu_time_actively_used = df.TotalCPU.loc[(slice(None), '')].sum()
     cpu_time_consumed = df.CPUTimeRAW.loc[(slice(None), '')].sum()
 
