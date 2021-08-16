@@ -166,7 +166,6 @@ def save_csvs(df):
 if __name__ == "__main__":
     user, start, end = get_args(argv)
     df = get_df_from_sacct(user, start, end)
-    print(df)
     df = reindex_df(df)
     # convert TimeRAW to timedelta
     df.TotalCPU = convert_totcpu(df.TotalCPU)
