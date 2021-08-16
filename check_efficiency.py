@@ -8,13 +8,13 @@ from tabulate import tabulate
 from allfields import get_all_fields
 
 
-def get_args():
+def get_args(argvs):
     '''
     Parse command line arguments.
     '''
     try:
-        user = argv[1]
-        start = datetime.date.today() - datetime.timedelta(days=int(argv[2]))
+        user = argvs[1]
+        start = datetime.date.today() - datetime.timedelta(days=int(argvs[2]))
         end = datetime.date.today()
     except:
         print(f"Usage {argv[0]} user how-many-days-ago-start")
@@ -25,7 +25,7 @@ def get_args():
         )
         exit()
     try:
-        end = end - datetime.timedelta(days=int(argv[3]))
+        end = end - datetime.timedelta(days=int(argvs[3]))
     except:
         pass
     return user, start, end
@@ -109,14 +109,23 @@ def add_efficiency_columns(df):
     df["Effective CPUS"] = (df.Efficiency * df.NCPUS)
     return df
 
+def good_jobsteps(index):
+    def good_jobstep(jobstep):
+        bad_strings = ['batch', 'extern']
+        return all(bs not in jobstep for bs in bad_strings)
+
+    return [ jobstep for _,jobstep in index if good_jobstep(jobstep)]
+
+
 
 def compute_global_efficiency(df):
     '''
     Compute the total average efficiency of all included jobs.
     '''
-    # selecting only the main job step with (slice(None), '')
-    cpu_time_actively_used = df.TotalCPU.loc[(slice(None), '')].sum()
-    cpu_time_consumed = df.CPUTimeRAW.loc[(slice(None), '')].sum()
+    # selecting only the main job step 
+    jobsteps = good_jobsteps(df.index)
+    cpu_time_actively_used = df.TotalCPU.loc[(slice(None), jobsteps)].sum()
+    cpu_time_consumed = df.CPUTimeRAW.loc[(slice(None), jobsteps)].sum()
 
     efficiency = cpu_time_actively_used / cpu_time_consumed
     return efficiency
@@ -127,7 +136,8 @@ def save_csvs(df):
     Save dataframes to disk as PSQL-decorated CSV.
     Low efficiency jobs are saved in a different file.
     '''
-    out_df = df.loc[(slice(None), ''),  #
+    jobsteps = good_jobsteps(df.index)
+    out_df = df.loc[(slice(None), jobsteps),  #
                     [
                         'Efficiency',  #           
                         'NCPUS',  #      
@@ -154,8 +164,9 @@ def save_csvs(df):
 
 
 if __name__ == "__main__":
-    user, start, end = get_args()
+    user, start, end = get_args(argv)
     df = get_df_from_sacct(user, start, end)
+    print(df)
     df = reindex_df(df)
     # convert TimeRAW to timedelta
     df.TotalCPU = convert_totcpu(df.TotalCPU)
