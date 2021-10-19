@@ -2,6 +2,7 @@
 import subprocess
 import datetime
 import pandas as pd
+import numpy as np
 from io import StringIO
 from sys import argv, exit
 from tabulate import tabulate
@@ -112,7 +113,9 @@ def add_efficiency_columns(df):
 def good_jobsteps(index):
     def good_jobstep(jobstep):
         bad_strings = ['batch', 'extern']
-        return all(bs not in jobstep for bs in bad_strings)
+        res = ((not (type(jobstep) == float and np.isnan(jobstep))) and 
+               all(bs not in jobstep for bs in bad_strings))
+        return res
 
     return [ jobstep for _,jobstep in index if good_jobstep(jobstep)]
 
@@ -124,10 +127,16 @@ def compute_global_efficiency(df):
     '''
     # selecting only the main job step 
     jobsteps = good_jobsteps(df.index)
-    cpu_time_actively_used = df.TotalCPU.loc[(slice(None), jobsteps)].sum()
-    cpu_time_consumed = df.CPUTimeRAW.loc[(slice(None), jobsteps)].sum()
+    # cpu_time
+    actively_used = df.TotalCPU.loc[(slice(None), jobsteps)]
+    consumed = df.CPUTimeRAW.loc[(slice(None), jobsteps)]
 
-    efficiency = cpu_time_actively_used / cpu_time_consumed
+    selection = ~(actively_used.isna() | consumed.isna())
+
+    actively_used_sum = actively_used.loc[selection].sum()
+    consumed_sum = consumed.loc[selection].sum()
+
+    efficiency = actively_used_sum / consumed_sum
     return efficiency
 
 
