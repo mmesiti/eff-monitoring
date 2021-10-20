@@ -61,7 +61,7 @@ def reindex_df(df):
     Reindex dataframes using the JobID and the job step
     (from the JobID column).
     '''
-    index = df.JobID.str.extract("(?P<JobID>\d+)\.?(?P<JobStep>.*)",
+    index = df.JobID.astype(str).str.extract("(?P<JobID>\d+)\.?(?P<JobStep>.*)",
                                  expand=True)
 
     return (df[[col for col in df.columns if col != "JobID"]]  #
