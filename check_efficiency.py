@@ -6,7 +6,7 @@ import numpy as np
 from io import StringIO
 from sys import argv, exit
 from tabulate import tabulate
-from allfields import get_all_fields
+from allfields import get_all_fields, types
 
 
 def get_args(argvs):
@@ -22,8 +22,8 @@ def get_args(argvs):
         print(f"e.g.: {argv[0]} s.michele.mesiti 7 # for a week ago")
         print(f"or: ")
         print(
-            f"Usage {argv[0]} user how-many-days-ago-start how-many-days-ago-end"
-        )
+                f"Usage {argv[0]} user how-many-days-ago-start how-many-days-ago-end"
+                )
         exit()
     try:
         end = end - datetime.timedelta(days=int(argvs[3]))
@@ -53,7 +53,7 @@ def get_df_from_sacct(user, start, end):
 
     ss = StringIO(str_output)
 
-    return pd.read_csv(ss, delimiter="|")
+    return pd.read_csv(ss, delimiter="|",dtype=types)
 
 
 def reindex_df(df):
@@ -61,8 +61,8 @@ def reindex_df(df):
     Reindex dataframes using the JobID and the job step
     (from the JobID column).
     '''
-    index = df.JobID.astype(str).str.extract("(?P<JobID>\d+)\.?(?P<JobStep>.*)",
-                                 expand=True)
+    index = df.JobID.str.extract("(?P<JobID>\d+)\.?(?P<JobStep>.*)",
+            expand=True)
 
     return (df[[col for col in df.columns if col != "JobID"]]  #
             .join(index)  #
@@ -87,13 +87,13 @@ def convert_totcpu(totcpu_series):
     seconds_pattern = r"(?P<seconds>.*)"
 
     totcpu = totcpu_series.str.extract(
-        f"({days_hour_pattern})?{minutes_pattern}:{seconds_pattern}",
-        expand=True)[units]
+            f"({days_hour_pattern})?{minutes_pattern}:{seconds_pattern}",
+            expand=True)[units]
 
     totcpu = totcpu.fillna(0)
 
     return sum((pd.to_timedelta(totcpu[unit].astype(float), unit=unit)
-                for unit in units), pd.Timedelta(0))
+        for unit in units), pd.Timedelta(0))
 
 
 def convert_cputime_raw(cputime_raw):
@@ -113,9 +113,7 @@ def add_efficiency_columns(df):
 def good_jobsteps(index):
     def good_jobstep(jobstep):
         bad_strings = ['batch', 'extern']
-        res = ((not (type(jobstep) == float and np.isnan(jobstep))) and 
-               all(bs not in jobstep for bs in bad_strings))
-        return res
+        return (jobstep != '') and all(bs not in jobstep for bs in bad_strings)
 
     return [ jobstep for _,jobstep in index if good_jobstep(jobstep)]
 
@@ -126,15 +124,13 @@ def compute_global_efficiency(df):
     Compute the total average efficiency of all included jobs.
     '''
     # selecting only the main job step 
-    jobsteps = good_jobsteps(df.index)
+    jobsteps = ''
     # cpu_time
     actively_used = df.TotalCPU.loc[(slice(None), jobsteps)]
-    consumed = df.CPUTimeRAW.loc[(slice(None), jobsteps)]
+    consumed = df.CPUTime.loc[(slice(None), jobsteps)]
 
-    selection = ~(actively_used.isna() | consumed.isna())
-
-    actively_used_sum = actively_used.loc[selection].sum()
-    consumed_sum = consumed.loc[selection].sum()
+    actively_used_sum = actively_used.sum()
+    consumed_sum = consumed.sum()
 
     efficiency = actively_used_sum / consumed_sum
     return efficiency
@@ -145,31 +141,33 @@ def save_csvs(df):
     Save dataframes to disk as PSQL-decorated CSV.
     Low efficiency jobs are saved in a different file.
     '''
-    jobsteps = good_jobsteps(df.index)
-    out_df = df.loc[(slice(None), jobsteps),  #
-                    [
-                        'Efficiency',  #           
-                        'NCPUS',  #      
-                        'Effective CPUS',  #               
-                        'ReqMem',  #       
-                        'ExitCode',  #         
-                        'JobName',  #        
-                        'Submit',  #       
-                        'Start',  #      
-                        'Elapsed'
-                    ]]
+    jobsteps = slice(None) #good_jobsteps(df.index)
+    columns = [ 'Efficiency',  #           
+            'NCPUS',  #      
+            'Effective CPUS',  #               
+            'ReqMem',  #       
+            'ExitCode',  #         
+            'JobName',  #        
+            'Submit',  #       
+            'Start',  #      
+            'Elapsed'
+            ]
 
+    out_df = df.loc[(slice(None),''),columns]  # Only main jobs
     loweff_threshold = .6
     out_df_loweff = out_df.loc[out_df.Efficiency < loweff_threshold, :]
+    out_df_all = df.loc[:,columns]  # Substeps as well
 
     for df, filename in [(out_df, f"eff_{user}.csv"),
-                         (out_df_loweff, f"loweff_{user}.csv")]:
+                         (out_df_loweff, f"loweff_{user}.csv"),
+                         (out_df_all, f"alleff_{user}.csv")]:
+                         
         with open(filename, 'w') as f:
             f.write(
-                tabulate(df.reset_index().sort_values(by=["JobID", "JobStep"]),
-                         headers='keys',
-                         tablefmt='psql',
-                         showindex=False))
+                    tabulate(df.reset_index().sort_values(by=["JobID", "JobStep"]),
+                        headers='keys',
+                        tablefmt='psql',
+                        showindex=False))
 
 
 if __name__ == "__main__":
@@ -178,6 +176,7 @@ if __name__ == "__main__":
     df = reindex_df(df)
     # convert TimeRAW to timedelta
     df.TotalCPU = convert_totcpu(df.TotalCPU)
+    df.CPUTime = convert_totcpu(df.CPUTime)
     df.CPUTimeRAW = convert_cputime_raw(df.CPUTimeRAW)
 
     # Compute efficiency
