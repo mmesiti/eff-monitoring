@@ -6,4 +6,5 @@ def get_all_fields():
     return (subprocess.run(cmd.split(),
                            capture_output=True).stdout.decode("utf-8").split())
 
-types = {'JobID': str}
+types = {'JobID': str,
+         'JobIDRaw': str}
