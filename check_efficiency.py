@@ -122,7 +122,7 @@ def select_interesting_states(df):
         "BOOT_FA", "CANCELL", "COMPLET", "DEADLI", "FAILED",
         "NODE_FA", "PREEMPT", "SUSPEND", "TIMEOU"
     ]
-    condition = df.State.map(lambda x : x[:7] in interesting_states)
+    condition = df.State.map(lambda x : any(x.startswith(s) for s in interesting_states))
     return df.loc[condition,:]
 
 def compute_global_efficiency(df):

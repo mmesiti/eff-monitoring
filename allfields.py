@@ -7,4 +7,5 @@ def get_all_fields():
                            capture_output=True).stdout.decode("utf-8").split())
 
 types = {'JobID': str,
-         'JobIDRaw': str}
+         'JobIDRaw': str,
+         'State': str}

@@ -87,8 +87,8 @@ if (isset($_FILES['sacct'])) {
 
     // Jobs in states not listed here will be discarded
     $interesting_states = [
-        "BOOT_FA", "CANCELL", "COMPLET", "DEADLI", "FAILED",
-        "NODE_FA", "PREEMPT", "SUSPEND", "TIMEOU"
+        "BOOT_F", "CANCEL", "COMPLE", "DEADLI", "FAILED",
+        "NODE_F", "PREEMP", "SUSPEN", "TIMEOU"
     ];
 
     // Prepare SQL statement
@@ -139,7 +139,7 @@ if (isset($_FILES['sacct'])) {
         $record = array_combine($fields, $line);
 
         // Discard uninteresting states
-        if (!in_array(substr($record['State'], 0, 7), $interesting_states)) {
+        if (!in_array(substr($record['State'], 0, 6), $interesting_states)) {
             continue;
         }
 
