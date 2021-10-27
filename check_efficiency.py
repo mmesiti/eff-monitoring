@@ -117,7 +117,13 @@ def good_jobsteps(index):
 
     return [ jobstep for _,jobstep in index if good_jobstep(jobstep)]
 
-
+def select_interesting_states(df):
+    interesting_states = [
+        "BOOT_FA", "CANCELL", "COMPLET", "DEADLI", "FAILED",
+        "NODE_FA", "PREEMPT", "SUSPEND", "TIMEOU"
+    ]
+    condition = df.State.map(lambda x : x[:7] in interesting_states)
+    return df.loc[condition,:]
 
 def compute_global_efficiency(df):
     '''
@@ -151,6 +157,7 @@ def compute_global_efficiency_v2(df):
 
     efficiency = actively_used_sum / consumed_sum
     return efficiency
+
 
 
 def save_csvs(df):
@@ -191,6 +198,7 @@ if __name__ == "__main__":
     user, start, end = get_args(argv)
     df = get_df_from_sacct(user, start, end)
     df = reindex_df(df)
+    df = select_interesting_states(df)
     # convert TimeRAW to timedelta
     df.TotalCPU = convert_totcpu(df.TotalCPU)
     df.CPUTime = convert_totcpu(df.CPUTime)
