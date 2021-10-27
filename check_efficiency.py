@@ -135,6 +135,22 @@ def compute_global_efficiency(df):
     efficiency = actively_used_sum / consumed_sum
     return efficiency
 
+def compute_global_efficiency_v2(df):
+    '''
+    Compute the total average efficiency of all included jobs.
+    '''
+    # selecting only the main job step
+    condition = ~df.JobIDRaw.str.contains('.')
+    # cpu_time
+    actively_used = df.TotalCPU.loc[condition]
+    consumed = df.CPUTime.loc[condition]
+
+    actively_used_sum = actively_used.sum()
+    consumed_sum = consumed.sum()
+
+    efficiency = actively_used_sum / consumed_sum
+    return efficiency
+
 
 def save_csvs(df):
     '''
@@ -181,5 +197,5 @@ if __name__ == "__main__":
 
     # Compute efficiency
     df = add_efficiency_columns(df)
-    print("Efficiency:", compute_global_efficiency(df))
+    print("Efficiency:", compute_global_efficiency_v2(df))
     save_csvs(df)
