@@ -140,7 +140,8 @@ def compute_global_efficiency_v2(df):
     Compute the total average efficiency of all included jobs.
     '''
     # selecting only the main job step
-    condition = ~df.JobIDRaw.str.contains('.')
+    # literal '.'  must be escaped
+    condition = ~df.JobIDRaw.str.contains('\.')
     # cpu_time
     actively_used = df.TotalCPU.loc[condition]
     consumed = df.CPUTime.loc[condition]
